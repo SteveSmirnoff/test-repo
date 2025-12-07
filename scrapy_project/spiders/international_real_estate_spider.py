@@ -2,6 +2,12 @@ import scrapy
 import csv
 from urllib.parse import urlparse
 import re
+from urllib.parse import urlparse
+
+
+def extract_domain(url):
+    domain = (urlparse(url if url.startswith('http') else f'https://{url}').netloc or url.split('/')[0]).removeprefix('www.')
+    return f"https://www.{domain}/"
 
 
 class InternationalRealEstateSpider(scrapy.Spider):
@@ -26,12 +32,16 @@ class InternationalRealEstateSpider(scrapy.Spider):
     }
 
     custom_settings = {
-        'CONCURRENT_REQUESTS': 16,
+        'CONCURRENT_REQUESTS': 8,
+        'CONCURRENT_REQUESTS_PER_DOMAIN': 1,
         'DOWNLOAD_DELAY': 0.5,
         'ROBOTSTXT_OBEY': False,
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'DOWNLOAD_TIMEOUT': 30,
-        'RETRY_TIMES': 2,
+        'RETRY_TIMES': 0,
+        'DOWNLOADER_MIDDLEWARES': {
+            "scrapy.downloadermiddlewares.retry.RetryMiddleware": 90,
+        },
         'FEEDS': {
             'international_results.csv': {
                 'format': 'csv',
@@ -41,29 +51,23 @@ class InternationalRealEstateSpider(scrapy.Spider):
         }
     }
 
-    def __init__(self, csv_file=r'C:\Users\steph\Downloads\websites.csv', *args, **kwargs):
+    def __init__(self, text_file=r'C:\Users\steph\Downloads\websites.txt', *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.csv_file = csv_file
+        self.text_file = text_file
         self.start_urls = self.load_urls()
 
     def load_urls(self):
         """Load URLs from CSV file"""
         urls = []
         try:
-            with open(self.csv_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                # Try common column names
-                for row in reader:
-                    url = row.get('url') or row.get('website') or row.get('domain') or list(row.values())[0]
-                    if url:
-                        # Ensure URL has scheme
-                        if not url.startswith(('http://', 'https://')):
-                            url = 'https://' + url
-                        urls.append(url.strip())
+            with open(self.text_file, 'r', encoding='utf-8') as f:
+                rows = f.read().split("\n")
+                for row in rows:
+                    urls.append(extract_domain(row))
         except Exception as e:
             self.logger.error(f"Error loading CSV: {e}")
 
-        self.logger.info(f"Loaded {len(urls)} URLs from {self.csv_file}")
+        self.logger.info(f"Loaded {len(urls)} URLs from {self.text_file}")
         return urls
 
     def parse(self, response):
